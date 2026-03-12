@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Client Departure Countdown</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;800&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --neon-green: #39ff14;
+      --neon-blue: #00f0ff;
+      --neon-purple: #bf5fff;
+      --neon-pink: #ff2d78;
+      --bg: #0a0a0f;
+    }
+
+    body {
+      background: var(--bg);
+      color: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      min-height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    /* ── Canvas for particles ── */
+    #canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    /* ── Animated radial glow behind content ── */
+    .glow-bg {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background:
+        radial-gradient(ellipse 60% 40% at 50% 50%, rgba(57,255,20,.08) 0%, transparent 70%);
+      animation: pulse-bg 4s ease-in-out infinite alternate;
+      pointer-events: none;
+    }
+    @keyframes pulse-bg {
+      from { opacity: .6; transform: scale(1); }
+      to   { opacity: 1;  transform: scale(1.06); }
+    }
+
+    /* ── Main wrapper ── */
+    .container {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      padding: 2rem;
+      max-width: 860px;
+    }
+
+    /* ── Top label ── */
+    .label-top {
+      font-size: .85rem;
+      letter-spacing: .25em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.4);
+      animation: fadein 1.2s ease forwards;
+    }
+
+    /* ── Countdown number ── */
+    .countdown-wrap {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .countdown-number {
+      font-size: clamp(7rem, 25vw, 15rem);
+      font-weight: 800;
+      line-height: 1;
+      background: linear-gradient(135deg, var(--neon-green), var(--neon-blue), var(--neon-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 0 40px rgba(57,255,20,.5)) drop-shadow(0 0 80px rgba(0,240,255,.3));
+      animation: number-bounce 0.6s cubic-bezier(.36,.07,.19,.97) both;
+    }
+
+    @keyframes number-bounce {
+      0%   { transform: scale(1.4); opacity: 0; }
+      60%  { transform: scale(.92); opacity: 1; }
+      80%  { transform: scale(1.04); }
+      100% { transform: scale(1); }
+    }
+
+    .countdown-suffix {
+      font-size: clamp(1.2rem, 3vw, 1.8rem);
+      font-weight: 700;
+      color: rgba(255,255,255,.55);
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      margin-top: -.5rem;
+    }
+
+    /* ── Quote card ── */
+    .quote-card {
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 1.5rem;
+      padding: 1.8rem 2.5rem;
+      max-width: 700px;
+      backdrop-filter: blur(10px);
+      animation: slide-up .5s cubic-bezier(.22,1,.36,1) both;
+      transition: box-shadow .3s;
+    }
+    .quote-card:hover {
+      box-shadow: 0 0 40px rgba(57,255,20,.15), 0 0 80px rgba(0,240,255,.08);
+    }
+    @keyframes slide-up {
+      from { opacity: 0; transform: translateY(30px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .quote-text {
+      font-size: clamp(1.05rem, 2.5vw, 1.45rem);
+      font-weight: 400;
+      line-height: 1.6;
+      color: rgba(255,255,255,.9);
+    }
+
+    .quote-text strong {
+      color: var(--neon-green);
+      font-weight: 700;
+    }
+
+    /* ── Date badge ── */
+    .date-badge {
+      font-size: .8rem;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      padding: .4rem 1.2rem;
+      border-radius: 99px;
+      border: 1px solid rgba(255,255,255,.15);
+      color: rgba(255,255,255,.35);
+    }
+
+    /* ── Click hint ── */
+    .hint {
+      font-size: .75rem;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,.2);
+      animation: blink 2.5s ease-in-out infinite;
+    }
+    @keyframes blink {
+      0%,100% { opacity: .2; }
+      50%      { opacity: .6; }
+    }
+
+    /* ── "Freedom" burst overlay (shown when days <= 0) ── */
+    .freedom-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      background: linear-gradient(135deg, #0a0a0f 0%, #0d1a0d 100%);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+    }
+    .freedom-overlay.active { display: flex; }
+    .freedom-title {
+      font-size: clamp(3rem, 12vw, 9rem);
+      font-weight: 800;
+      background: linear-gradient(90deg, var(--neon-green), var(--neon-blue));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: pulse-text 1s ease-in-out infinite alternate;
+    }
+    @keyframes pulse-text {
+      from { filter: drop-shadow(0 0 30px rgba(57,255,20,.6)); }
+      to   { filter: drop-shadow(0 0 80px rgba(57,255,20,1)); }
+    }
+
+    @keyframes fadein {
+      from { opacity: 0; } to { opacity: 1; }
+    }
+
+    /* ── Progress bar ── */
+    .progress-track {
+      width: min(500px, 80vw);
+      height: 4px;
+      border-radius: 99px;
+      background: rgba(255,255,255,.08);
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--neon-green), var(--neon-blue));
+      transition: width .6s ease;
+      box-shadow: 0 0 12px rgba(57,255,20,.7);
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<div class="glow-bg"></div>
+
+<!-- Normal countdown view -->
+<div class="container" id="main">
+  <p class="label-top">Usage interne — Équipe DevOps</p>
+
+  <div class="countdown-wrap">
+    <div class="countdown-number" id="days">–</div>
+    <div class="countdown-suffix" id="days-label">jours restants</div>
+  </div>
+
+  <div class="progress-track">
+    <div class="progress-fill" id="progress"></div>
+  </div>
+
+  <div class="quote-card" id="quote">
+    <p class="quote-text" id="quote-text">Chargement de la sagesse…</p>
+  </div>
+
+  <p class="date-badge">Jour de la Liberté : 31 Mars 2026 — Adieu, <strong style="color:var(--neon-pink);letter-spacing:.05em">le client</strong> 👋</p>
+  <p class="hint">Cliquez n'importe où pour une nouvelle citation</p>
+</div>
+
+<!-- Freedom overlay (when date has passed) -->
+<div class="freedom-overlay" id="freedom">
+  <div class="freedom-title">🎉 ENFIN LIBRES 🎉</div>
+  <p style="font-size:1.4rem;color:rgba(255,255,255,.7);max-width:600px;line-height:1.7">
+    <strong style="color:var(--neon-pink)">le client</strong> a quitté le bâtiment.<br>
+    Le monitoring est calme. L'astreinte se repose.<br>
+    <strong style="color:var(--neon-green)">Allez toucher de l'herbe, vous l'avez mérité.</strong>
+  </p>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CONFIG
+// ─────────────────────────────────────────────
+const TARGET = new Date('2026-04-01T00:00:00');
+const START  = new Date('2025-09-01T00:00:00'); // approx. "pain started"
+
+// ─────────────────────────────────────────────
+//  CLIENT (URL param ?client=NomClient)
+//  Défaut : "le client" / "du client"
+// ─────────────────────────────────────────────
+const _clientRaw = new URLSearchParams(window.location.search).get('client');
+
+const CLIENT_FORMS = (() => {
+  if (!_clientRaw) return null;
+  const vowel = /^[aeiouàâäéèêëîïôùûüæœ]/i.test(_clientRaw);
+  const de = vowel ? `d'${_clientRaw}` : `de ${_clientRaw}`;
+  return { le: _clientRaw, du: de, bare: _clientRaw };
+})();
+
+/** Remplace les occurrences de "le client" / "du client" / "client" dans un fragment HTML */
+function clientify(html) {
+  if (!CLIENT_FORMS) return html;
+  const { le, du, bare } = CLIENT_FORMS;
+  return html
+    .replace(/du\s+(<strong[^>]*>)client(<\/strong>)/g,  `de $1${bare}$2`)
+    .replace(/le\s+(<strong[^>]*>)client(<\/strong>)/g,  `$1${bare}$2`)
+    .replace(/(<strong[^>]*>)le client(<\/strong>)/g,    `$1${le}$2`)
+    .replace(/(<strong[^>]*>)du client(<\/strong>)/g,    `$1${du}$2`)
+    .replace(/(<strong[^>]*>)client(<\/strong>)/g,       `$1${bare}$2`);
+}
+
+const QUOTES = [
+  // ── Slack ──
+  `Dans <strong>{D} jours</strong>, le dernier message Slack du <strong>client</strong> en majuscules à 23h ne sera plus qu'une légende qu'on raconte aux nouveaux autour d'un café.`,
+  `<strong>{D} jours</strong> avant que le canal Slack <strong>du client</strong> soit archivé pour toujours. On gardera peut-être les screenshots. Pour rire.`,
+  `<strong>{D} jours</strong> avant que le mot "URGENT" reprenne sa vraie signification. Spoiler : ça ne désignait pas tout.`,
+  `Dans <strong>{D} jours</strong>, les messages Slack à 17h58 un vendredi seront un souvenir douloureux, mais <em>lointain</em>.`,
+  `<strong>{D} jours</strong> avant que nos notifications Slack arrêtent de sonner comme l'alarme d'un sous-marin en perdition.`,
+  `<strong>{D} jours</strong> et les @here du <strong>client</strong> à 17h55 le vendredi disparaîtront à jamais. La sérénité du week-end sera restaurée.`,
+  `Dans <strong>{D} jours</strong>, "Re: re: re: URGENT - toujours pas résolu - CRITIQUE" ne flottera plus dans notre Slack. Paix à son âme numérique.`,
+  `<strong>{D} jours</strong> avant que nos DMs Slack redeviennent un espace de travail et non une zone de crise permanente.`,
+
+  // ── Le vendredi soir ──
+  `<strong>{D} jours</strong> avant que le vendredi 17h30 redevienne une heure normale. Pas l'heure à laquelle <strong>le client</strong> appelle "juste pour un point rapide".`,
+  `Dans <strong>{D} jours</strong>, "urgent vendredi soir" redeviendra l'oxymore qu'il n'aurait jamais dû cesser d'être.`,
+  `<strong>{D} jours</strong> avant qu'on arrête de regarder l'heure le vendredi en se demandant <em>à quelle heure</em> exactement ça va sonner.`,
+  `<strong>{D} jours</strong> et le vendredi après-midi redeviendra un moment de quiétude, pas une zone de haute vigilance.`,
+  `Dans <strong>{D} jours</strong>, on pourra déployer un vendredi après-midi sans rédiger son testament au préalable.`,
+  `<strong>{D} jours</strong> avant que "appel de 5 minutes vendredi soir" disparaisse de notre vocabulaire. Cet appel n'a <em>jamais</em> duré 5 minutes.`,
+
+  // ── Le week-end ──
+  `<strong>{D} jours</strong> avant que le samedi redevienne un samedi. Pas un jour de support implicite pour <strong>le client</strong>.`,
+  `Dans <strong>{D} jours</strong>, nos week-ends n'appartiendront plus au SLA invisible et non contractuel du <strong>client</strong>.`,
+  `<strong>{D} jours</strong> et les call du dimanche matin deviennent illégaux par nature. Enfin.`,
+  `<strong>{D} jours</strong> avant que nos genoux cessent de trembler chaque fois que le téléphone sonne un dimanche.`,
+  `Dans <strong>{D} jours</strong>, "on peut se faire un point ce week-end ?" cessera d'être une question posée sérieusement.`,
+  `<strong>{D} jours</strong> et on dormira 8 heures d'affilée sans surveiller son téléphone d'un œil. Les deux yeux fermés. Toute la nuit.`,
+
+  // ── Escalades ──
+  `<strong>{D} jours</strong> avant que "j'escalade au management" cesse d'être la réponse systématique à chaque pod en <code>CrashLoopBackOff</code>.`,
+  `Dans <strong>{D} jours</strong>, une alerte Grafana ne provoquera plus une escalade vers le COMEX avant même qu'on ait pu lire les logs.`,
+  `<strong>{D} jours</strong> avant que "je contacte votre direction" redevienne une menace rare et non une salutation d'ouverture de ticket.`,
+  `<strong>{D} jours</strong> et "c'est critique pour le business" cessera d'être l'argument ultime pour tout et n'importe quoi — y compris changer la couleur d'un bouton.`,
+  `Dans <strong>{D} jours</strong>, on pourra diagnostiquer un incident sans avoir simultanément trois niveaux hiérarchiques du <strong>client</strong> en call.`,
+  `<strong>{D} jours</strong> avant que le mot "escalade" redevienne une technique d'alpinisme et non notre quotidien.`,
+
+  // ── Ils ne mettent jamais à jour ──
+  `<strong>{D} jours</strong> avant qu'on arrête d'expliquer pourquoi les patches de sécurité ne sont pas optionnels. Pour la centième fois.`,
+  `Dans <strong>{D} jours</strong>, "on est sur la version 2019 et ça marche très bien" ne sera plus une phrase qu'on reçoit avec un sourire crispé.`,
+  `<strong>{D} jours</strong> et la dette de mises à jour du <strong>client</strong> deviendra le problème de quelqu'un d'autre. Quelqu'un de très courageux.`,
+  `<strong>{D} jours</strong> avant qu'on cesse de maintenir une compatibilité avec des dépendances EOL depuis le premier mandat d'Obama.`,
+  `Dans <strong>{D} jours</strong>, "on verra ça dans la prochaine release, dans 18 mois" sera une réponse que <em>quelqu'un d'autre</em> devra gérer.`,
+  `<strong>{D} jours</strong> et on n'aura plus à déployer nos propres contournements pour compenser les versions que <strong>le client</strong> refuse de mettre à jour.`,
+
+  // ── Actions improbables ──
+  `<strong>{D} jours</strong> avant qu'on reçoive pour la dernière fois "j'ai rien touché, c'est cassé tout seul" — depuis le compte admin, en prod, un vendredi.`,
+  `Dans <strong>{D} jours</strong>, personne ne supprimera accidentellement un namespace Kubernetes en pensant être sur le cluster de dev.`,
+  `<strong>{D} jours</strong> avant que quelqu'un de chez <strong>le client</strong> ne relance un nœud Cassandra "pour voir si ça va mieux" sans prévenir personne.`,
+  `<strong>{D} jours</strong> et "j'ai fait un <code>kubectl delete pod --all</code> en prod, c'est grave ?" ne sera plus une question qu'on reçoit.`,
+  `Dans <strong>{D} jours</strong>, "pouvez-vous juste..." disparaît du lexique. Il n'y a jamais eu de "juste". Il n'y aura jamais eu de "juste".`,
+  `<strong>{D} jours</strong> avant que "j'ai redémarré le cluster Cassandra parce que c'était lent" cesse d'être une phrase prononcée avec innocence.`,
+
+  // ── Kubernetes ──
+  `<strong>{D} jours</strong> avant que nos pods se crashent en paix, sans que <strong>le client</strong> soit au courant avant nous grâce à un monitoring qu'ils ont installé sans nous le dire.`,
+  `Dans <strong>{D} jours</strong>, un <code>kubectl describe pod</code> ne sera plus une course contre la montre avant le prochain appel en escalade.`,
+  `<strong>{D} jours</strong> et les namespaces Kubernetes retrouveront leur calme. Plus personne pour y faire des <code>apply</code> sauvages un dimanche.`,
+  `<strong>{D} jours</strong> avant que nos déploiements Helm ne soient plus commentés par quelqu'un qui a lu la moitié de la doc officielle.`,
+  `Dans <strong>{D} jours</strong>, "rollback d'urgence sur le cluster" redeviendra une procédure rare et non un réflexe pavlovien du lundi matin.`,
+  `<strong>{D} jours</strong> et on pourra faire évoluer notre architecture Kubernetes sans devoir justifier chaque choix à quelqu'un qui confond pod et container.`,
+
+  // ── Cassandra ──
+  `<strong>{D} jours</strong> avant que les timeouts Cassandra cessent d'être traités comme des urgences nationales nécessitant un bridge international.`,
+  `Dans <strong>{D} jours</strong>, la compaction Cassandra pourra tourner tranquillement sans que <strong>le client</strong> interprète la latence comme une panne totale.`,
+  `<strong>{D} jours</strong> avant que "<code>ReadTimeout</code> sur le cluster Cassandra" ne provoque plus un appel en crise avant même qu'on ait ouvert Grafana.`,
+  `<strong>{D} jours</strong> et nos nœuds Cassandra seront dimensionnés pour nos vrais besoins, pas pour absorber les requêtes non filtrées du <strong>client</strong>.`,
+  `Dans <strong>{D} jours</strong>, "vous pouvez pas juste ajouter un index ?" sur une table Cassandra ne sera plus une question posée avec le plus grand sérieux.`,
+  `<strong>{D} jours</strong> avant que le replication factor de notre cluster cesse d'être remis en question à chaque incident par quelqu'un qui découvre ce que c'est.`,
+
+  // ── Ingestion nocturne ──
+  `<strong>{D} jours</strong> avant que si l'ingestion de 3h du matin échoue, on le sache <em>avant</em> <strong>le client</strong>. Et qu'on le gère. Sans panique. Sans Slack.`,
+  `Dans <strong>{D} jours</strong>, un job d'ingestion nocturne en échec pourra se relancer sans déclencher une cellule de crise à 4h47.`,
+  `<strong>{D} jours</strong> et nos pipelines d'ingestion tourneront dans le silence. Un silence doux. Presque maternel.`,
+  `<strong>{D} jours</strong> avant que "les données de la nuit dernière ne sont pas arrivées" ne se transforme plus en Slack de 47 messages avant 9h.`,
+  `Dans <strong>{D} jours</strong>, on pourra tuner nos jobs d'ingestion sans recevoir de commentaires de quelqu'un qui n'a pas regardé les logs.`,
+  `<strong>{D} jours</strong> et l'ingestion nocturne redeviendra ce qu'elle est : un processus batch. Pas un rituel anxiogène.`,
+
+  // ── Ils partent mais veulent tout le support ──
+  `<strong>{D} jours</strong> avant que "on s'en va mais on a besoin de vous à 100% jusqu'au dernier jour" cesse d'être considéré comme une demande normale.`,
+  `Dans <strong>{D} jours</strong>, "support étendu post-contrat" ne sera plus un concept qu'on subit avec le sourire.`,
+  `<strong>{D} jours</strong> avant que <strong>le client</strong> exige simultanément une migration complète, un support 24/7, et une documentation exhaustive de tout ce qu'on a fait ces 3 ans.`,
+  `<strong>{D} jours</strong> et "on part, mais vous restez responsables" redeviendra ce que c'est : une phrase sans sens juridique ni humain.`,
+  `Dans <strong>{D} jours</strong>, la notion de "transfert de compétences en urgence la dernière semaine" disparaîtra de notre vocabulaire professionnel.`,
+  `<strong>{D} jours</strong> avant que "on a besoin que vous formiez notre nouveau prestataire avant de partir" soit la dernière demande impossible qu'on reçoit.`,
+
+  // ── Monitoring & incidents ──
+  `<strong>{D} jours</strong> avant que nos dashboards Grafana arrêtent de ressembler à un tableau de Pollock chaque lundi matin. Le vert reviendra.`,
+  `<strong>{D} jours</strong> et nos runbooks arrêtent de grossir. Le nombre d'incidents va chuter. Le café va avoir meilleur goût.`,
+  `Dans <strong>{D} jours</strong>, Grafana affichera des courbes plates et apaisantes, comme un EEG de la sérénité.`,
+  `<strong>{D} jours</strong> et le mot "incident" retrouvera sa rareté d'antan. On se souviendra de ce que c'est que dormir.`,
+  `Dans <strong>{D} jours</strong>, nos métriques de disponibilité cesseront d'être rédigées avec des astérisques et des notes de bas de page honteuses.`,
+  `<strong>{D} jours</strong> avant que nos post-mortems n'aient plus la longueur d'un roman de Dostoïevski.`,
+
+  // ── Astreinte ──
+  `<strong>{D} jours</strong> avant que notre astreinte cesse d'être une épreuve de survie psychologique. On va tenir.`,
+  `Dans <strong>{D} jours</strong>, l'astreinte redevient ce qu'elle devrait être : ennuyeuse. Glorieusement ennuyeuse.`,
+  `<strong>{D} jours</strong> avant que le téléphone d'astreinte arrête de sonner plus souvent qu'une alarme incendie.`,
+  `Dans <strong>{D} jours</strong>, "réveillé à 3h du mat par <strong>le client</strong>" ne sera plus une phrase qu'on prononce au présent.`,
+  `<strong>{D} jours</strong> avant que nos nuits redeviennent des nuits et non des quarts de veille sur un cargo en perdition.`,
+
+  // ── Classiques ──
+  `Plus que <strong>{D} jours</strong> avant que "ça marchait hier pourtant" devienne le problème de quelqu'un d'autre. <em>Plus jamais nous.</em>`,
+  `<strong>{D} jours</strong> avant qu'on arrête d'expliquer qu'on ne redémarre <em>pas</em> un nœud Cassandra en prod un mardi à 15h "juste pour voir".`,
+  `Dans <strong>{D} jours</strong>, "c'est de votre côté le problème" cessera d'être une réponse recevable avant même d'avoir regardé les métriques.`,
+  `<strong>{D} jours</strong> et "ça devrait pas prendre longtemps" cessera de signifier "ça va prendre trois jours, une crise, et deux week-ends".`,
+  `Dans <strong>{D} jours</strong>, on pourra manger une pizza sans qu'elle refroidisse à cause d'une alerte Slack du <strong>client</strong>.`,
+  `<strong>{D} jours</strong> avant qu'une journée calme cesse d'être suspecte et redevienne glorieusement normale.`,
+
+  // ── Psychologie d'équipe ──
+  `<strong>{D} jours</strong> avant que le nom <strong>du client</strong> arrête de déclencher un stress post-traumatique au fond de nos ventres.`,
+  `Dans <strong>{D} jours</strong>, on pourra prendre des vacances sans préparer une salle de guerre en parallèle.`,
+  `<strong>{D} jours</strong> et les congés maladie liés à l'épuisement professionnel diminueront. C'est scientifiquement prouvable.`,
+  `Dans <strong>{D} jours</strong>, on pourra être fier de notre infra sans immédiatement toucher du bois.`,
+  `<strong>{D} jours</strong> et le ratio "fire fighting / amélioration continue" s'inversera enfin dans le bon sens.`,
+  `Dans <strong>{D} jours</strong>, "charge mentale DevOps" ne sera plus un euphémisme pour "PTSD".`,
+
+  // ── Philosophique ──
+  `Dans <strong>{D} jours</strong>, l'horizon sera dégagé. Pas de nuage orange d'alerte Slack. Juste du bleu.`,
+  `<strong>{D} jours</strong> avant que la dette technique héritée du <strong>client</strong> commence enfin à se rembourser à notre rythme.`,
+  `Dans <strong>{D} jours</strong>, nous serons des ingénieurs qui construisent, pas des vigiles de la prod qui subissent.`,
+  `<strong>{D} jours</strong> avant que l'automatisation soit une priorité, pas un luxe qu'on n'a jamais le temps d'implémenter.`,
+  `<strong>{D} jours</strong> et "DevOps" redeviendra une culture, pas un titre de poste qui signifie "disponible 24/7 pour le client".`,
+
+  // ── Références culturelles ──
+  `<strong>{D} jours</strong> avant que notre équipe devienne le héros de sa propre histoire. Et non le support technique permanent du <strong>client</strong>.`,
+  `Dans <strong>{D} jours</strong>, comme Frodon arrivant à la Comté, on posera nos sacs et on se reposera vraiment.`,
+  `<strong>{D} jours</strong> et comme à la fin d'un long film de guerre, on pourra regarder en arrière et dire : "on a survécu".`,
+  `Dans <strong>{D} jours</strong>, on connaîtra la joie simple d'un pipeline vert un lundi matin, sans Slack d'alerte à côté. Comme dans les légendes.`,
+
+  // ── Countdown final ──
+  `<strong>{D} jours</strong>. Souffle. Tiens bon. La lumière au bout du tunnel n'est pas un train, c'est la sortie du <strong>client</strong>.`,
+  `Plus que <strong>{D} jours</strong>. Chaque matin qui se lève est un matin de moins avec <strong>le client</strong>. Célébrons ça.`,
+  `<strong>{D} jours</strong>. On y est presque. Regardez ce compteur et souriez — vous avez survécu jusqu'ici.`,
+  `Dans <strong>{D} jours</strong>, on ouvrira une bière, on regardera Grafana au vert, et on ne dira rien. Juste sourire.`,
+  `<strong>{D} jours</strong>. Ce n'est pas de la haine, c'est de l'espoir. L'espoir que l'ingestion de cette nuit se passera bien. Et que personne n'appellera.`,
+  `Plus que <strong>{D} jours</strong> avant que "le client" devienne officiellement un nom de projet legacy dans nos annales.`,
+  `<strong>{D} jours</strong> et on ferme ce chapitre. On tourne la page. On respire. On déploie le vendredi. Et on ne répond pas au Slack.`,
+  `Dans <strong>{D} jours</strong>, la légende du <strong>client</strong> commencera. Une légende qu'on racontera autour d'un café. Mais qu'on ne vivra plus jamais.`,
+];
+
+// ─────────────────────────────────────────────
+//  COUNTDOWN
+// ─────────────────────────────────────────────
+function getDaysLeft() {
+  const now = new Date();
+  const diff = TARGET - now;
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
+function getProgress() {
+  const total = TARGET - START;
+  const elapsed = Date.now() - START;
+  return Math.min(100, Math.max(0, (elapsed / total) * 100));
+}
+
+function renderQuote(days) {
+  const idx = Math.floor(Math.random() * QUOTES.length);
+  const text = clientify(QUOTES[idx].replace(/\{D\}/g, days));
+  const el = document.getElementById('quote-text');
+  const card = document.getElementById('quote');
+
+  // restart animation
+  card.style.animation = 'none';
+  card.offsetHeight; // reflow
+  card.style.animation = '';
+
+  el.innerHTML = text;
+}
+
+function render() {
+  const days = getDaysLeft();
+
+  if (days <= 0) {
+    document.getElementById('freedom').classList.add('active');
+    launchFireworks();
+    return;
+  }
+
+  document.getElementById('days').textContent = days;
+  document.getElementById('days-label').textContent = days === 1 ? 'jour restant' : 'jours restants';
+  document.getElementById('progress').style.width = getProgress() + '%';
+  renderQuote(days);
+}
+
+// ─────────────────────────────────────────────
+//  PARTICLES
+// ─────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, particles = [];
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+class Particle {
+  constructor(x, y, burst = false) {
+    this.x = x ?? Math.random() * W;
+    this.y = y ?? Math.random() * H;
+    this.burst = burst;
+    const speed = burst ? (Math.random() * 6 + 2) : (Math.random() * .4 + .1);
+    const angle = burst ? (Math.random() * Math.PI * 2) : (Math.random() * Math.PI * 2);
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed - (burst ? 0 : .5);
+    this.radius = burst ? (Math.random() * 4 + 2) : (Math.random() * 1.5 + .5);
+    this.alpha = burst ? 1 : Math.random() * .5 + .2;
+    this.decay = burst ? (Math.random() * .015 + .008) : .002;
+    const colors = ['#39ff14','#00f0ff','#bf5fff','#ff2d78','#ffe94d'];
+    this.color = colors[Math.floor(Math.random() * colors.length)];
+    this.gravity = burst ? .12 : 0;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vy += this.gravity;
+    this.alpha -= this.decay;
+    if (!this.burst) {
+      if (this.x < 0) this.x = W;
+      if (this.x > W) this.x = 0;
+      if (this.y < 0) this.y = H;
+      if (this.y > H) this.y = 0;
+    }
+  }
+  draw() {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, this.alpha);
+    ctx.fillStyle = this.color;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur = this.burst ? 10 : 6;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// seed ambient particles
+for (let i = 0; i < 80; i++) particles.push(new Particle());
+
+function launchBurst(x, y, count = 40) {
+  for (let i = 0; i < count; i++) particles.push(new Particle(x, y, true));
+}
+
+function launchFireworks() {
+  setInterval(() => {
+    launchBurst(Math.random() * W, Math.random() * H * .7, 80);
+  }, 400);
+}
+
+function animate() {
+  ctx.clearRect(0, 0, W, H);
+
+  // keep a steady ambient pool
+  while (particles.filter(p => !p.burst).length < 80) {
+    particles.push(new Particle());
+  }
+
+  particles = particles.filter(p => p.alpha > 0);
+  particles.forEach(p => { p.update(); p.draw(); });
+
+  requestAnimationFrame(animate);
+}
+animate();
+
+// ─────────────────────────────────────────────
+//  INTERACTIONS
+// ─────────────────────────────────────────────
+document.body.addEventListener('click', (e) => {
+  launchBurst(e.clientX, e.clientY, 35);
+  renderQuote(getDaysLeft());
+});
+
+// Patch static HTML refs with client name
+function patchStaticRefs() {
+  if (!CLIENT_FORMS) return;
+  [document.querySelector('.date-badge'), document.querySelector('#freedom > p')]
+    .forEach(el => { if (el) el.innerHTML = clientify(el.innerHTML); });
+}
+
+// Initial render
+patchStaticRefs();
+render();
+
+// Update countdown at midnight
+setInterval(() => {
+  render();
+}, 60 * 1000);
+</script>
+</body>
+</html>
